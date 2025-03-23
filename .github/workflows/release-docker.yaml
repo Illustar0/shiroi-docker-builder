@@ -16,7 +16,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  REGISTRY_IMAGE: ghcr.io/illustar0/shiroi
   HASH_FILE: build_hash
 jobs:
   prepare:
@@ -28,6 +27,9 @@ jobs:
       hash_content: ${{ steps.read_hash.outputs.hash_content }}
 
     steps:
+      - name: Get lowercase username
+        run: echo "USERNAME=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
       - name: Checkout
         uses: actions/checkout@v4
       - name: Read HASH_FILE content
@@ -91,7 +93,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY_IMAGE }}
+          images: ghcr.io/${{ env.USERNAME }}/shiroi
           labels: |
             org.opencontainers.image.authors="i@innei.in"
             org.opencontainers.image.description="Shiro 闭源迭代"
