@@ -1,0 +1,138 @@
+name: Release (Docker)
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '0 3 * * *'
+
+  repository_dispatch:
+    types: [trigger-workflow]
+
+permissions: write-all
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY_IMAGE: ghcr.io/illustar0/shiroi
+  HASH_FILE: build_hash
+jobs:
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-latest
+    if: ${{ github.event.head_commit.message != 'Update hash file' }}
+
+    outputs:
+      hash_content: ${{ steps.read_hash.outputs.hash_content }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Read HASH_FILE content
+        id: read_hash
+        run: |
+          content=$(cat ${{ env.HASH_FILE }}) || true
+          echo "hash_content=$content" >> "$GITHUB_OUTPUT"
+
+  check:
+    name: Check Should Rebuild
+    runs-on: ubuntu-latest
+    needs: prepare
+    outputs:
+      canceled: ${{ steps.use_content.outputs.canceled }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: innei-dev/shiroi
+          token: ${{ secrets.GH_PAT }} # `GH_PAT` is a secret that contains your PAT
+          fetch-depth: 0
+          lfs: true
+
+      - name: Use content from prev job and compare
+        id: use_content
+        env:
+          FILE_HASH: ${{ needs.prepare.outputs.hash_content }}
+        run: |
+          file_hash=$FILE_HASH
+          current_hash=$(git rev-parse --short HEAD)
+          echo "File Hash: $file_hash"
+          echo "Current Git Hash: $current_hash"
+          if [ "$file_hash" == "$current_hash" ]; then
+            echo "Hashes match. Stopping workflow."
+            echo "canceled=true" >> $GITHUB_OUTPUT
+          else
+            echo "Hashes do not match. Continuing workflow."
+          fi
+
+  build-docker:
+    runs-on: ubuntu-latest
+    needs: check
+    if: ${{needs.check.outputs.canceled != 'true'}}
+
+    strategy:
+      matrix:
+        platform:
+          - linux/amd64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: innei-dev/shiroi
+          token: ${{ secrets.GH_PAT }} # `GH_PAT` is a secret that contains your PAT
+          fetch-depth: 0
+          lfs: true
+
+      - name: Setup | Docker Meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
+          labels: |
+            org.opencontainers.image.authors="i@innei.in"
+            org.opencontainers.image.description="Shiro 闭源迭代"
+            org.opencontainers.image.licenses="MIT"
+            org.opencontainers.image.source="https://github.com/innei-dev/Shiroi"
+            org.opencontainers.image.title="shiroi"
+          tags: |
+            type=ref,event=branch
+            type=sha
+            type=raw,value=latest
+
+      - name: Setup | Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GH_PAT }}
+
+      - name: Setup | Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup | Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Publish | Build and push Docker images
+        uses: docker/build-push-action@v6.15.0
+        id: build
+        env:
+          DOCKER_BUILD_SUMMARY: false
+          DOCKER_BUILD_RECORD_UPLOAD: false
+        with:
+          platforms: ${{ matrix.platform }}
+          context: .
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          build-args: |
+            BASE_URL=${{ secrets.BASE_URL }}
+            S3_ACCESS_KEY=${{ secrets.S3_ACCESS_KEY }}
+            S3_SECRET_KEY=${{ secrets.S3_SECRET_KEY }}
+            WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET }}
+            TMDB_API_KEY=${{ secrets.TMDB_API_KEY }}
+            GH_TOKEN=${{ secrets.GH_TOKEN }}
+            
+            
+            
+            
