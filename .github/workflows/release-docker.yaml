@@ -76,6 +76,9 @@ jobs:
       matrix:
         platform:
           - linux/amd64
+    outputs:
+      sha_short: ${{ steps.store.outputs.sha_short }}
+      branch: ${{ steps.store.outputs.branch }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -133,6 +136,48 @@ jobs:
             WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET }}
             TMDB_API_KEY=${{ secrets.TMDB_API_KEY }}
             GH_TOKEN=${{ secrets.GH_TOKEN }}
+      - name: Store artifact commit version
+        shell: bash
+        id: store
+        run: |
+          sha_short=$(git rev-parse --short HEAD)
+          branch_name=$(git rev-parse --abbrev-ref HEAD)
+          echo "sha_short=$sha_short" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch_name" >> "$GITHUB_OUTPUT"
+  store:
+    name: Store artifact commit version
+    runs-on: ubuntu-latest
+    needs: [build-docker]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false # otherwise, the token used is the GITHUB_TOKEN, instead of your personal token
+          fetch-depth: 0 # otherwise, you will failed to push refs to dest repo
+      # Get the commit version from the build job
+      - name: Use outputs from build
+        env:
+          SHA_SHORT: ${{ needs.build-docker.outputs.sha_short }}
+          BRANCH: ${{ needs.build-docker.outputs.branch }}
+        run: |
+          echo "SHA Short from build: $SHA_SHORT"
+          echo "Branch from build: $BRANCH"
+      - name: Write hash to file
+        env:
+          SHA_SHORT: ${{ needs.build-docker.outputs.sha_short }}
+
+        run: echo $SHA_SHORT > ${{ env.HASH_FILE }}
+      - name: Commit files
+        run: |
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add ${{ env.HASH_FILE }}
+          git commit -a -m "Update hash file"
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref }}
             
             
             
