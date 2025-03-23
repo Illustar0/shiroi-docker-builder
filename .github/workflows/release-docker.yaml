@@ -129,13 +129,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}
-          build-args: |
-            BASE_URL=${{ secrets.BASE_URL }}
-            S3_ACCESS_KEY=${{ secrets.S3_ACCESS_KEY }}
-            S3_SECRET_KEY=${{ secrets.S3_SECRET_KEY }}
-            WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET }}
-            TMDB_API_KEY=${{ secrets.TMDB_API_KEY }}
-            GH_TOKEN=${{ secrets.GH_TOKEN }}
       - name: Store artifact commit version
         shell: bash
         id: store
